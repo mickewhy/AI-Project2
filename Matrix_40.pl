@@ -4,8 +4,15 @@
 % __________MAIN__________
 
 % Returns true if given a goal state or returns the goal state if given a variable.
-%goal(result(M,X)):-
-%    result(M,X),
+% Base case, checks if all of the hostages are saved, i.e. hostages = 0.
+% X can be s0 with empty list of hostages or recursive result() state that leads to all hostages being saved.
+goal(X):-
+    \+var(X),
+    calcHostages(X,0).
+
+goal(R):- 
+    var(R),
+    goalRec(s0,R).
 
 
 % Base successor state, is true if given a valid move M and the initial state s0.
@@ -83,7 +90,7 @@ calcNeo(s0,NX,NY):-
 calcNeo(result(M,X), NX, NY):-
     result(M,X),
     calcNeo(X,NX1,NY1),
-    ((M = up, NX is NX1-1, NY is NY1);(M = down, NX is NX1+1, NY is NY1);(M = right, NX is NX1, NY is NY1+1);(M = left, NX is NX1, NY is NY1-1)).
+    ((M = up, NX is NX1-1, NY is NY1);(M = down, NX is NX1+1, NY is NY1);(M = right, NX is NX1, NY is NY1+1);(M = left, NX is NX1, NY is NY1-1);((M=carry;M=drop), NX is NX1, NY is NY1)).
 
 % Gets hostage depending on the number of hostages H.
 % If H = 2, like in the KB, this will bind HXY to the hostage at location(H1 = H-1 = 1), i.e. the second hostage.
@@ -96,13 +103,20 @@ getHostage(S,HXY):-
     H1 is H-1,
     nth0(H1, L, HXY).
 
-% Base case, checks if all of the hostages are saved.
-% X can be s0 with empty list of hostages or recursive result() state that leads to all hostages being saved.
-matrix(X):-
-    calcHostages(X,0).
+% Merges two states and returns them in R.
+% ?- merge(s0, result(drop,s0), R). R = result(drop, s0).
+merge(s0, M1, R):-
+    R = M1.
 
-matrix(R, CARRY, OUT):-
-    R = result(M,X),
+% If the first state isn't s0, R = result(Mn,M1) where Mn = all of the moves originally in the first state.
+% ?- merge(result(left,result(right,s0)),result(down,result(up,s0)),R). R = result(left, result(right, result(down, result(up, s0))))
+merge(result(M,X),M1,R):-
+    (X = s0, R = result(M,M1)) ; (merge(X, M1, R1), R = result(M,R1)).
+
+% Drops one hostage from state R and returns new state R1.
+% ?- drop1(s0,R1). R1 = result(drop, result(up, result(carry, result(down, result(right, result(right, s0))))))
+drop1(R,R1):-
+    (R = result(M,X);R = s0),
     calcHostages(R, H),
     calcCapacity(R, C),
     calcNeo(R, NX, NY),
@@ -110,7 +124,12 @@ matrix(R, CARRY, OUT):-
     getHostage(R,[HX, HY]),
     getMovesTo(NX, NY, HX, HY, MOVESH),
     CARRY = result(carry,MOVESH),
-    calcNeo(MOVESH, NX1, NY1),
-    getMovesTo(NX1, NY1, BX, BY, MOVESB),
-    OUT = result(drop,MOVESB).
+    getMovesTo(HX, HY, BX, BY, MOVESB),
+    DROP = result(drop,MOVESB),
+    merge(DROP, CARRY, R1).
 
+goalRec(R,RET):-
+    drop1(R,RTEMP),
+    merge(RTEMP, R, R1),
+    calcHostages(R1, H),
+    ((H = 0, RET = R1) ; goalRec(R1,RET)).
